@@ -1,4 +1,4 @@
-#! /usr/bin/env python3
+#! /usr/bin/env python
 
 import MySQLdb
 import MySQLdb.cursors
@@ -54,7 +54,7 @@ def create_data():
                 d.append({'x': i, 'y': j, 'z':k, 'data': somestr})
 
     c.executemany(sql, d)
-
+    db.commit()
 
 t1 = time.time_ns()
 create_table()
