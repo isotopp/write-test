@@ -17,14 +17,35 @@ db_config = dict(
 db = MySQLdb.connect(**db_config)
 
 
-def create_table():
-    sql = """drop table if exists data"""
+def take_time(label, t_old):
+    t_new = time.time_ns()
+    runtime = t_new - t_old
+    strtime = f"| {label} | {runtime} ns | {runtime/1000000} ms |"
+
+    return t_new, strtime
+
+
+def run_command(label, sql):
     try:
         c = db.cursor()
         c.execute(sql)
     except MySQLdb.Error as e:
-        print(f"MySQL Error on drop: {e}")
+        print(f"MySQL Error on {label}: {e}")
         sys.exit()
+
+
+def innodb_yolo_mode():
+    set_statement = "set global innodb_flush_log_at_trx_commit = 2"
+    run_command("set statement", set_statement)
+
+def innodb_acid_mode():
+    set_statement = "set global innodb_flush_log_at_trx_commit = 1"
+    run_command("set statement", set_statement)
+
+
+def create_table():
+    sql = """drop table if exists data"""
+    run_command("drop table", sql)
 
     sql = """create table data (
       x integer unsigned not null,
@@ -33,17 +54,13 @@ def create_table():
       data blob,
       primary key(x,y,z)
     )"""
-    try:
-        c = db.cursor()
-        c.execute(sql)
-    except MySQLdb.Error as e:
-        print(f"MySQL Error on create: {e}")
-        sys.exit()
-
+    run_command("create table", sql)
 
 def create_data():
     somestr = "".join(chr(random.randint(0,25) + ord('a')) for x in range(1, 1000))
-    sql = "insert into data (x, y, z, data) values (%(x)s, %(y)s, %(z)s, %(data)s)"
+    insert_statement = "insert into data (x, y, z, data) values (%(x)s, %(y)s, %(z)s, %(data)s)"
+
+    innodb_yolo_mode()
 
     c = db.cursor()
     d = []
@@ -53,13 +70,40 @@ def create_data():
             for k in range(0,64):
                 d.append({'x': i, 'y': j, 'z':k, 'data': somestr})
 
-    c.executemany(sql, d)
+    c.executemany(insert_statement, d)
     db.commit()
 
-t1 = time.time_ns()
+def create_data_slowly():
+    somestr = "".join(chr(random.randint(0,25) + ord('a')) for x in range(1, 1000))
+    insert_statement = "insert into data (x, y, z, data) values (%(x)s, %(y)s, %(z)s, %(data)s)"
+
+    innodb_yolo_mode()
+    c = db.cursor()
+    d = []
+
+    for i in range(0,64):
+        for j in range(0,64):
+            for k in range(0,64):
+                c.execute(insert_statement,{'x': i, 'y': j, 'z':k, 'data': somestr})
+                db.commit()
+
+
+t = time.time_ns()
+print("| Op      | Runtime (ns)  | Runtime (ms) |")
+print("|---------|---------------|-------------|")
+
 create_table()
-t2 = time.time_ns()
-print(f"Create: {t2-t1} ns {(t2-t1)/1000000} ms")
+t, result = take_time("Create table", t)
+print(result)
+
 create_data()
-t3 = time.time_ns()
-print(f"Write: {t3-t2} ns {(t3-t2)/1000000} ms")
+t, result = take_time("Write data", t)
+print(result)
+
+create_table()
+t, result = take_time("Recreate table", t)
+print(result)
+
+create_data_slowly()
+t, result = take_time("Write data slowly", t)
+print(result)
